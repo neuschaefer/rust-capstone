@@ -84,7 +84,24 @@ pub struct Insn {
     pub bytes: Vec<u8>,
     pub mnemonic: String,
     pub op_str: String,
+    pub detail: Option<Detail>,
 }
+
+impl Insn {
+    pub unsafe fn new(ci: &ll::cs_insn) -> Insn {
+        Insn {
+            addr:     ci.address,
+            bytes:    Vec::from_fn(ci.size as uint, |n| { ci.bytes[n] }),
+            mnemonic: CString::new(ci.mnemonic.as_ptr() as *const i8, false).as_str()
+                .unwrap_or("<invalid utf8>").to_string(),
+            op_str:   CString::new(ci.op_str.as_ptr() as *const i8, false).as_str()
+                .unwrap_or("<invalid utf8>").to_string(),
+            detail:   None
+        }
+    }
+}
+
+pub struct Detail;
 
 pub struct Engine {
     handle: *const c_void
@@ -116,21 +133,19 @@ impl Engine {
             match ll::cs_disasm(self.handle, code.as_ptr(), code.len() as size_t, addr, count as size_t, &mut cinsn) {
                 0 => Err(Error::new(self.errno())),
                 n => {
-                    let mut v = Vec::new();
-                    v.extend(CVec::new(cinsn, n as uint).as_slice().iter().map(|ci| {
-                        Insn{
-                            addr:     ci.address,
-                            bytes:    Vec::from_fn(ci.size as uint, |n| { ci.bytes[n] }),
-                            mnemonic: CString::new(ci.mnemonic.as_ptr() as *const i8, false).as_str().unwrap_or("<invalid utf8>").to_string(),
-                            op_str:   CString::new(ci.op_str.as_ptr() as *const i8, false).as_str().unwrap_or("<invalid utf8>").to_string(),
-                        }
-
-                    }));
+                    let mut v = Vec::with_capacity(n as uint);
+                    v.extend(CVec::new(cinsn, n as uint).as_slice().iter().map(
+                        |ci| Insn::new(ci)
+                    ));
                     ll::cs_free(cinsn, n);
                     Ok(v)
                 },
             }
         }
+    }
+
+    pub fn disasm_iter(&'e self, code: &'v[u8], addr: u64) -> DisasmIter {
+        ;
     }
 
     fn errno(&self) -> uint {
