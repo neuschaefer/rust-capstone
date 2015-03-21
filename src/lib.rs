@@ -1,12 +1,13 @@
 #![crate_name="capstone"]
 #![crate_type="rlib"]
-#![experimental]
 
-#![feature(globs)]
+#![feature(globs, int_uint)]
 
 extern crate libc;
 extern crate core;
 extern crate serialize;
+
+#[macro_use] extern crate bitflags;
 
 use libc::{c_int, c_void, size_t};
 use std::c_str::CString;
@@ -17,7 +18,7 @@ mod ll;
 #[cfg(test)]
 mod tests;
 
-#[deriving(Show)]
+#[derive(Debug)]
 pub enum Arch {
     Arm = 0,
     Arm64,
@@ -30,7 +31,7 @@ pub enum Arch {
 }
 
 bitflags!(
-    #[deriving(Show)]
+    #[derive(Debug)]
     flags Mode: u32 {
         const MODE_LITTLE_ENDIAN= 0,
         const MODE_ARM          = 0,
@@ -49,9 +50,9 @@ bitflags!(
         const MODE_MIPS32       = 1 << 2,
         const MODE_MIPS64       = 1 << 3,
     }
-)
+);
 
-#[deriving(Show)]
+#[derive(Debug)]
 pub enum Opt {
     Syntax = 1,
     Detail,
@@ -59,7 +60,7 @@ pub enum Opt {
     // OptMem
 }
 
-#[deriving(Show)]
+#[derive(Debug)]
 pub struct Error {
     pub code: uint,
     pub desc: Option<String>,
