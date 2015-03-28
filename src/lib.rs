@@ -1,7 +1,7 @@
 #![crate_name="capstone"]
 #![crate_type="rlib"]
 
-#![feature(globs, int_uint)]
+#![feature(int_uint, libc, core, rustc_private)]
 
 extern crate libc;
 extern crate core;
@@ -10,15 +10,15 @@ extern crate serialize;
 #[macro_use] extern crate bitflags;
 
 use libc::{c_int, c_void, size_t};
-use std::c_str::CString;
-use std::c_vec::CVec;
+use std::ffi::CStr;
+use std::{slice, str};
 
 mod ll;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug)]
+#[derive(Debug, Copy)]
 pub enum Arch {
     Arm = 0,
     Arm64,
@@ -52,7 +52,7 @@ bitflags!(
     }
 );
 
-#[derive(Debug)]
+#[derive(Debug, Copy)]
 pub enum Opt {
     Syntax = 1,
     Detail,
@@ -68,13 +68,11 @@ pub struct Error {
 
 impl Error {
     fn new(err: uint) -> Error {
-        unsafe {
-            match CString::new(ll::cs_strerror(err as i32), false).as_str() {
-                Some(s) =>
-                    Error{ code: err, desc: Some(s.to_string()) },
-                None =>
-                    Error{ code: err, desc: None },
-            }
+        let desc_cstr = unsafe { CStr::from_ptr(ll::cs_strerror(err as i32)) };
+        Error{
+            code: err,
+            desc: str::from_utf8(desc_cstr.to_bytes())
+                    .ok().map(|s| s.to_string())
         }
     }
 }
@@ -84,19 +82,23 @@ pub struct Insn {
     pub bytes: Vec<u8>,
     pub mnemonic: String,
     pub op_str: String,
-    pub detail: Option<Detail>,
+    //pub detail: Option<Detail>,
+}
+
+unsafe fn make_string(buf: &[u8]) -> String {
+    str::from_utf8(buf)
+        .unwrap_or("<invalid UTF-8>")
+        .to_string()
 }
 
 impl Insn {
     pub unsafe fn new(ci: &ll::cs_insn) -> Insn {
         Insn {
             addr:     ci.address,
-            bytes:    Vec::from_fn(ci.size as uint, |n| { ci.bytes[n] }),
-            mnemonic: CString::new(ci.mnemonic.as_ptr() as *const i8, false).as_str()
-                .unwrap_or("<invalid utf8>").to_string(),
-            op_str:   CString::new(ci.op_str.as_ptr() as *const i8, false).as_str()
-                .unwrap_or("<invalid utf8>").to_string(),
-            detail:   None
+            bytes:    ci.bytes[0..ci.size as usize].to_vec(),
+            mnemonic: make_string(&ci.mnemonic),
+            op_str:   make_string(&ci.op_str),
+            //detail:   None
         }
     }
 }
@@ -133,19 +135,19 @@ impl Engine {
             match ll::cs_disasm(self.handle, code.as_ptr(), code.len() as size_t, addr, count as size_t, &mut cinsn) {
                 0 => Err(Error::new(self.errno())),
                 n => {
-                    let mut v = Vec::with_capacity(n as uint);
-                    v.extend(CVec::new(cinsn, n as uint).as_slice().iter().map(
-                        |ci| Insn::new(ci)
-                    ));
+//                  let mut v = Vec::with_capacity(n as uint);
+//                  v.extend(CVec::new(cinsn, n as uint).as_slice().iter().map(
+//                      |ci| Insn::new(ci)
+//                  ));
+
+                    let v = slice::from_raw_parts(cinsn, n as usize)
+                        .iter().map(|ci| Insn::new(ci)).collect();
+
                     ll::cs_free(cinsn, n);
                     Ok(v)
                 },
             }
         }
-    }
-
-    pub fn disasm_iter(&'e self, code: &'v[u8], addr: u64) -> DisasmIter {
-        ;
     }
 
     fn errno(&self) -> uint {
